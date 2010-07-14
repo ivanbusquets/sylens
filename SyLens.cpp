@@ -51,12 +51,12 @@ using namespace DD::Image;
 static const char* const CLASS = "SyLens";
 static const char* const HELP =  "This plugin undistorts footage according"
 " to the lens distortion model used by Syntheyes";
-static const char* const VERSION = "0.0.5";
+static const char* const VERSION = "0.0.5interp";
 static const char* const mode_names[] = { "undistort", "redistort", 0 };
 
 // The number of discrete points we sample on the radius of the distortion.
 // The rest is going to be interpolated
-static const int STEPS = 1024;
+static const int STEPS = 128;
 
 class LutTuple
 {
@@ -112,7 +112,7 @@ class SyLens : public Iop
 	
 	// Lookup table based on the radius, and we add a value outside
 	// of the domain to help us interpolate
-	LutTuple* _values[STEPS +1];
+	LutTuple* _values[STEPS];
 	
 public:
 	SyLens( Node *node ) : Iop ( node )
@@ -386,7 +386,11 @@ void SyLens::buildTable()
 	double inc = 1.0f / STEPS;
 	double u, v, r2, f;
 	
-	for (int i = 0; i < STEPS + 1; i++) {
+	// The first value is zero anyway
+	if(_values[0] != NULL) delete _values[0];
+	_values[0] = new LutTuple(0,1);
+	
+	for (int i = 1; i < STEPS; i++) {
 		// Dealloc the old struct 
 		if(_values[i] != NULL) delete _values[i];
 		
@@ -420,25 +424,30 @@ void SyLens::distortVector(Vector2& uvVec, double k, double kcube)
 // Get an interpolated F (distortion multiplier) on the radius r2
 double SyLens::interpolatedF(float r2)
 {
-	float fLeft, fRight, rLeft, rRight;
-	
-	// find the nearest values in the table. We also check our last extreme
-	// because the radius we've been give might be just slightly above 1
-	for (int i = 0; i < STEPS + 1; i++) {
-		if(_values[i]->r2 < r2) {
-			rLeft = _values[i]->r2;
-			fLeft = _values[i]->f;
-		}
-		
+	float fLeft, fRight, rLeft, rRight, fLeftMin, fRightMax;
+	int i;
+	// find the nearest values in the table. We omit the first and the last
+	// increment since we might need them for overflows to interpolate.
+	for (i = 1; i < STEPS; i++) {
 		if(_values[i]->r2 > r2) {
-			rRight = _values[i]->r2;
+			rLeft = _values[i-1]->r2;
+			fLeft = _values[i-1]->f;
 			fRight = _values[i]->f;
 			break;
 		}
 	}
 	
-	// linearly interpolate between them (no not smart but does the jobb)
-	return lerp(fLeft, fRight, r2 - rLeft);
+	// If we are on the extremes of the radius backtrack and also grab some
+	// values before our current left value
+	if(i > 2 && i < (STEPS-1)) {
+		fLeftMin = _values[i-2]->f;
+		fRightMax = _values[i+1]->f;
+		// use cubic interp
+		return curp(fLeftMin, fLeft, fRight, fRightMax, r2 - rLeft);
+	} else {
+		// linearly interpolate between them (no not smart but does the jobb)
+		return lerp(fLeft, fRight, r2 - rLeft);
+	}
 }
 
 // Get an reverse interpolated F (distortion multiplier) on the radius r2
@@ -448,46 +457,35 @@ double SyLens::reverseInterpolatedF(float r2)
 	
 	// find the nearest values in the table. We also check our last extreme
 	// because the radius we've been give might be just slightly above 1
-	for (int i = 0; i < STEPS + 1; i++) {
-		if(_values[i]->rResult < r2) {
-			rLeft = _values[i]->rResult;
-			fLeft = _values[i]->f;
-		}
-		
+	for (int i = 1; i < STEPS; i++) {
 		if(_values[i]->rResult > r2) {
-			rRight = _values[i]->rResult;
+			rLeft = _values[i-1]->rResult;
+			fLeft = _values[i-1]->f;
 			fRight = _values[i]->f;
 			break;
 		}
 	}
-	
-	// linearly interpolate between them (no not smart but does the jobb)
 	return lerp(fLeft, fRight, r2 - rLeft);
 }
 
 // Do a linear intepolation. Picked from http://local.wasp.uwa.edu.au/~pbourke/miscellaneous/interpolation/
-double SyLens::lerp(
-   double y1,double y2,
-   double mu)
+double SyLens::lerp(double y1, double y2, double mu)
 {
    return(y1*(1-mu)+y2*mu);
 }
 
 // Do a cubic interpolation
-double SyLens::curp(
-   double y0,double y1,
-   double y2,double y3,
-   double mu)
+double SyLens::curp( double y0,double y1, double y2,double y3, double mu)
 {
-   double a0,a1,a2,a3,mu2;
-
-   mu2 = mu*mu;
-   a0 = y3 - y2 - y0 + y1;
-   a1 = y0 - y1 - a0;
-   a2 = y2 - y0;
-   a3 = y1;
-
-   return(a0*mu*mu2+a1*mu2+a2*mu+a3);
+	double a0,a1,a2,a3,mu2;
+	
+	mu2 = mu*mu;
+	a0 = y3 - y2 - y0 + y1;
+	a1 = y0 - y1 - a0;
+	a2 = y2 - y0;
+	a3 = y1;
+	
+	return(a0*mu*mu2+a1*mu2+a2*mu+a3);
 }
 	
 // Get a coordinate that we need to sample from the SOURCE distorted image to get at the absXY
