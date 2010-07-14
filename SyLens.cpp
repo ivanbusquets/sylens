@@ -54,6 +54,21 @@ static const char* const HELP =  "This plugin undistorts footage according"
 static const char* const VERSION = "0.0.5";
 static const char* const mode_names[] = { "undistort", "redistort", 0 };
 
+// The number of discrete points we sample on the radius of the distortion.
+// The rest is going to be interpolated
+static const int STEPS = 1024;
+
+class LutTuple
+{
+public:
+	double r2;
+	double f;
+	LutTuple(double nr2, double nf2) {
+		r2 = nr2;
+		f = nf2;
+	}
+};
+
 class SyLens : public Iop
 {
 	//Nuke statics
@@ -92,6 +107,10 @@ class SyLens : public Iop
 	// calls to _request and cannot reside on the stack, so... 
 	Format _outFormat;
 	
+	// Lookup table based on the radius, and we add a value outside
+	// of the domain to help us interpolate
+	LutTuple* _values[STEPS +1];
+	
 public:
 	SyLens( Node *node ) : Iop ( node )
 	{
@@ -112,6 +131,11 @@ public:
 		_lastScanlineSize = 0;
 		_paddingW = 0;
 		_paddingH = 0;
+		
+		// Initialize the lookup table with null ptrs
+		for(int i = 0; i < STEPS + 1; i++) {
+			_values[i] = NULL;
+		}
 	}
 	
 	~SyLens () { }
@@ -193,6 +217,9 @@ public:
 		
 		Vector2 xy(i.x(), i.y());
 		Vector2 tr(i.r(), i.t());
+		
+		// At this point we need a lookup table
+		buildTable();
 		
 		// Here the distortion is INVERTED with relation to the pixel operation. With pixels, we need
 		// to obtain the coordinate to sample FROM. However, here we need a coordinate to sample TO
@@ -300,6 +327,10 @@ private:
 	void distortVectorIntoSource(Vector2& vec);
 	void undistortVectorIntoDest(Vector2& vec);
 	void Remove(Vector2& vec);
+	void buildTable();
+	double lerp(double y1,double y2,double mu);
+	double curp(double y0, double y1, double y2, double y3, double mu);
+	double interpolatedF(float);
 };
 
 // Since we do not need channel selectors or masks, we can use our raw Iop
@@ -342,23 +373,96 @@ void SyLens::vecFromUV(Vector2& absVec, Vector2& uvVec, int w, int h)
 	absVec.y = fromUv(uvVec.y, h);
 }
 
-// Place the UV coordinates of the distorted image in the undistorted image plane into uvVec
-void SyLens::distortVector(Vector2& uvVec, double k, double kcube) {
+// Build a table of distortion values from the 0 UV coordinate outwards to 1.
+// We dd another one to helpo us interpolate since a) nobody guaranteed floats never going out
+// of 1.0 b) we might use cubic or cosine interp later
+void SyLens::buildTable() 
+{
+	double inc = 1.0f / STEPS;
+	double u, v, r2, f;
 	
-	float r2 = _aspect * _aspect * uvVec.x * uvVec.x + uvVec.y * uvVec.y;
-	float f;
-	
-	// Skipping the square root munges up precision some
-	if (fabs(kcube) > 0.00001) {
-		f = 1 + r2*(k + kcube * sqrt(r2));
-	} else {
-		f = 1 + r2*(k);
+	for (int i = 0; i < STEPS + 1; i++) {
+		// Dealloc the old struct 
+		if(_values[i] != NULL) delete _values[i];
+		
+		u = i * inc;
+		r2 = _aspect * _aspect * u * u + u * u;
+		
+		// Skipping the square root munges up precision some
+		if (fabs(kCubeCoeff) > 0.00001) {
+			f = 1 + r2*(kCoeff + kCubeCoeff * sqrt(r2));
+		} else {
+			f = 1 + r2*(kCoeff);
+		}
+		_values[i] = new LutTuple(r2, f);
 	}
+}
+
+// Place the UV coordinates of the distorted image in the undistorted image plane into uvVec
+void SyLens::distortVector(Vector2& uvVec, double k, double kcube)
+{
+	
+	// The radius on which computation is based
+	float r2 = _aspect * _aspect * uvVec.x * uvVec.x + uvVec.y * uvVec.y;
+	
+	// The distortion multiplier derived from the radius.
+	float f = interpolatedF(r2);
 	
 	uvVec.x = uvVec.x * f;
 	uvVec.y = uvVec.y * f;
 }
 
+double SyLens::interpolatedF(float r2)
+{
+	float fLeft;
+	float fRight;
+	float rLeft;
+	float rRight;
+	
+	// find the nearest values in the table. We stashed an extreme
+	// value at the end of _values as well
+	for (int i = 0; i < STEPS + 1; i++) {
+		if(_values[i]->r2 < r2) {
+			rLeft = _values[i]->r2;
+			fLeft = _values[i]->f;
+		}
+		
+		if(_values[i]->r2 > r2) {
+			rRight = _values[i]->r2;
+			fRight = _values[i]->f;
+			break;
+		}
+	}
+	
+	// linearly interpolate between them (no not smart but does the jobb)
+	return lerp(fLeft, fRight, r2 - rLeft);
+	
+}
+// Do a linear intepolation
+double SyLens::lerp(
+   double y1,double y2,
+   double mu)
+{
+   return(y1*(1-mu)+y2*mu);
+}
+
+// Do a cubic interpolation
+double SyLens::curp(
+   double y0,double y1,
+   double y2,double y3,
+   double mu)
+{
+   double a0,a1,a2,a3,mu2;
+
+   mu2 = mu*mu;
+   a0 = y3 - y2 - y0 + y1;
+   a1 = y0 - y1 - a0;
+   a2 = y2 - y0;
+   a3 = y1;
+
+   return(a0*mu*mu2+a1*mu2+a2*mu+a3);
+}
+	
 // Get a coordinate that we need to sample from the SOURCE distorted image to get at the absXY
 // values in the RESULT
 void SyLens::distortVectorIntoSource(Vector2& absXY) {
@@ -384,32 +488,15 @@ void SyLens::undistortVectorIntoDest(Vector2& absXY) {
 
 // THIS IS SEMI-WRONG! Ported over from distort.szl, does not honor cubic distortion
 void SyLens::Remove(Vector2& pt) {
-	double r, rp, f, rlim, rplim, raw, err, slope;
+	double rp, f;
 	
-	rp = sqrt(_aspect * _aspect * pt.x * pt.x + pt.y * pt.y);
-	if (kCoeff < 0.0f) {
-		rlim = sqrt((-1.0/3.0) / kCoeff);
-		rplim = rlim * (1 + kCoeff*rlim*rlim);
-		if (rp >= 0.99 * rplim) {
-			f = rlim / rp;
-			pt.x = pt.x * f;
-			pt.y = pt.y * f;
-			return;
-		}
-	}
+	rp = _aspect * _aspect * pt.x * pt.x + pt.y * pt.y;
 	
-	r = rp;
-	for (int i = 0; i < 20; i++) {
-		raw = kCoeff * r * r;
-		slope = 1 + 3*raw;
-		err = rp - r * (1 + raw);
-		if (fabs(err) < 1.0e-10) break;
-		r += (err / slope);
-	}
-	f = r / rp;
+	// The distortion multiplier derived from the radius.
+	f = interpolatedF(rp);
 	
-	pt.x = pt.x * f;
-	pt.y = pt.y * f;
+	pt.x = pt.x / f;
+	pt.y = pt.y / f;
 }
 
 
