@@ -61,11 +61,14 @@ static const int STEPS = 1024;
 class LutTuple
 {
 public:
-	double r2;
-	double f;
-	LutTuple(double nr2, double nf2) {
+	float r2;
+	float f;
+	float rResult;
+	
+	LutTuple(float nr2, float nf2) {
 		r2 = nr2;
 		f = nf2;
+		rResult = nr2 * nf2;
 	}
 };
 
@@ -328,9 +331,11 @@ private:
 	void undistortVectorIntoDest(Vector2& vec);
 	void Remove(Vector2& vec);
 	void buildTable();
+	
 	double lerp(double y1,double y2,double mu);
 	double curp(double y0, double y1, double y2, double y3, double mu);
 	double interpolatedF(float);
+	double reverseInterpolatedF(float);
 };
 
 // Since we do not need channel selectors or masks, we can use our raw Iop
@@ -412,15 +417,13 @@ void SyLens::distortVector(Vector2& uvVec, double k, double kcube)
 	uvVec.y = uvVec.y * f;
 }
 
+// Get an interpolated F (distortion multiplier) on the radius r2
 double SyLens::interpolatedF(float r2)
 {
-	float fLeft;
-	float fRight;
-	float rLeft;
-	float rRight;
+	float fLeft, fRight, rLeft, rRight;
 	
-	// find the nearest values in the table. We stashed an extreme
-	// value at the end of _values as well
+	// find the nearest values in the table. We also check our last extreme
+	// because the radius we've been give might be just slightly above 1
 	for (int i = 0; i < STEPS + 1; i++) {
 		if(_values[i]->r2 < r2) {
 			rLeft = _values[i]->r2;
@@ -436,9 +439,33 @@ double SyLens::interpolatedF(float r2)
 	
 	// linearly interpolate between them (no not smart but does the jobb)
 	return lerp(fLeft, fRight, r2 - rLeft);
-	
 }
-// Do a linear intepolation
+
+// Get an reverse interpolated F (distortion multiplier) on the radius r2
+double SyLens::reverseInterpolatedF(float r2)
+{
+	float fLeft, fRight, rLeft, rRight;
+	
+	// find the nearest values in the table. We also check our last extreme
+	// because the radius we've been give might be just slightly above 1
+	for (int i = 0; i < STEPS + 1; i++) {
+		if(_values[i]->rResult < r2) {
+			rLeft = _values[i]->rResult;
+			fLeft = _values[i]->f;
+		}
+		
+		if(_values[i]->rResult > r2) {
+			rRight = _values[i]->rResult;
+			fRight = _values[i]->f;
+			break;
+		}
+	}
+	
+	// linearly interpolate between them (no not smart but does the jobb)
+	return lerp(fLeft, fRight, r2 - rLeft);
+}
+
+// Do a linear intepolation. Picked from http://local.wasp.uwa.edu.au/~pbourke/miscellaneous/interpolation/
 double SyLens::lerp(
    double y1,double y2,
    double mu)
@@ -488,15 +515,15 @@ void SyLens::undistortVectorIntoDest(Vector2& absXY) {
 
 // THIS IS SEMI-WRONG! Ported over from distort.szl, does not honor cubic distortion
 void SyLens::Remove(Vector2& pt) {
-	double rp, f;
+	double rp, revF;
 	
 	rp = _aspect * _aspect * pt.x * pt.x + pt.y * pt.y;
 	
 	// The distortion multiplier derived from the radius.
-	f = interpolatedF(rp);
+	revF = reverseInterpolatedF(rp);
 	
-	pt.x = pt.x / f;
-	pt.y = pt.y / f;
+	pt.x = pt.x / revF;
+	pt.y = pt.y / revF;
 }
 
 
