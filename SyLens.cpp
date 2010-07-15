@@ -55,8 +55,9 @@ static const char* const VERSION = "0.0.5interp";
 static const char* const mode_names[] = { "undistort", "redistort", 0 };
 
 // The number of discrete points we sample on the radius of the distortion.
-// The rest is going to be interpolated
-static const int STEPS = 128;
+// The rest is going to be interpolated. 48 comes from the syntheyes lens files
+// - if it works for them should work for us!
+static const int STEPS = 48;
 
 class LutTuple
 {
@@ -383,7 +384,8 @@ void SyLens::vecFromUV(Vector2& absVec, Vector2& uvVec, int w, int h)
 // of 1.0 b) we might use cubic or cosine interp later
 void SyLens::buildTable() 
 {
-	double inc = 1.0f / STEPS;
+	// Include SOME overshoot
+	double inc = 1.1f / STEPS;
 	double u, v, r2, f;
 	
 	// The first value is zero anyway
@@ -424,30 +426,25 @@ void SyLens::distortVector(Vector2& uvVec, double k, double kcube)
 // Get an interpolated F (distortion multiplier) on the radius r2
 double SyLens::interpolatedF(float r2)
 {
-	float fLeft, fRight, rLeft, rRight, fLeftMin, fRightMax;
+	float fLeft, fRight, rLeft, rRight;
 	int i;
+	
 	// find the nearest values in the table. We omit the first and the last
 	// increment since we might need them for overflows to interpolate.
 	for (i = 1; i < STEPS; i++) {
-		if(_values[i]->r2 > r2) {
+		if(_values[i]->rResult > r2) {
 			rLeft = _values[i-1]->r2;
 			fLeft = _values[i-1]->f;
 			fRight = _values[i]->f;
+			rRight = _values[i]->r2;
 			break;
 		}
 	}
 	
-	// If we are on the extremes of the radius backtrack and also grab some
-	// values before our current left value
-	if(i > 2 && i < (STEPS-1)) {
-		fLeftMin = _values[i-2]->f;
-		fRightMax = _values[i+1]->f;
-		// use cubic interp
-		return curp(fLeftMin, fLeft, fRight, fRightMax, r2 - rLeft);
-	} else {
-		// linearly interpolate between them (no not smart but does the jobb)
-		return lerp(fLeft, fRight, r2 - rLeft);
-	}
+	// linearly interpolate between them (no not smart but does the jobb)
+	// mu is the fraction of the interval rLeft/rRight where r2 is
+	double mu = 1.0f / ((rRight - rLeft) / (r2 - rLeft));
+	return lerp(fLeft, fRight, mu);
 }
 
 // Get an reverse interpolated F (distortion multiplier) on the radius r2
@@ -462,10 +459,12 @@ double SyLens::reverseInterpolatedF(float r2)
 			rLeft = _values[i-1]->rResult;
 			fLeft = _values[i-1]->f;
 			fRight = _values[i]->f;
+			rRight = _values[i]->rResult;
 			break;
 		}
 	}
-	return lerp(fLeft, fRight, r2 - rLeft);
+	double mu = 1.0f / ((rRight - rLeft) / (r2 - rLeft));
+	return lerp(fLeft, fRight, mu);
 }
 
 // Do a linear intepolation. Picked from http://local.wasp.uwa.edu.au/~pbourke/miscellaneous/interpolation/

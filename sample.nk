@@ -2,7 +2,7 @@
 version 6.0 v3
 define_window_layout_xml {<?xml version="1.0" encoding="UTF-8"?>
 <layout version="1.0">
-    <window x="614" y="45" w="1251" h="1024" screen="0">
+    <window x="306" y="48" w="1251" h="1024" screen="0">
         <splitter orientation="1">
             <split size="790"></split>
             <splitter orientation="1">
@@ -42,7 +42,7 @@ define_window_layout_xml {<?xml version="1.0" encoding="UTF-8"?>
 Root {
  inputs 0
  name /Code/SyLens/sample.nk
- frame 22
+ frame 7
  last_frame 50
  lock_range true
  format "2048 1234 0 0 2048 1234 1 "
@@ -55,40 +55,6 @@ StickyNote {
  label "Distortion -0.01826\nUncrop -0.038"
  xpos -310
  ypos -563
-}
-Read {
- inputs 0
- file SampleImg/Sample.jpg
- format "2204 1328 0 0 2204 1328 1 "
- name Read2
- xpos -442
- ypos -739
-}
-Read {
- inputs 0
- file SampleImg/Source.jpg
- format "2048 1234 0 0 2048 1234 1 "
- name Read1
- xpos -172
- ypos -801
-}
-set N17ba6b20 [stack 0]
-SyLens {
- k {{curve x21 -0.01826 -0.01826 x114 -0.01826}}
- uncrop {{curve x102 0.038}}
- debug true
- name SyLens_UN
- tile_color 0xc10000ff
- selected true
- xpos -172
- ypos -619
-}
-set N18a8efd0 [stack 0]
-Difference {
- inputs 2
- name Difference1
- xpos -442
- ypos -616
 }
 StickyNote {
  inputs 0
@@ -132,31 +98,31 @@ CheckerBoard2 {
  xpos 318
  ypos -782
 }
-set N17badd40 [stack 0]
+set N18a8f270 [stack 0]
 Dot {
  name Dot2
  xpos 495
  ypos -755
 }
-set N17baac00 [stack 0]
+set N18a65b30 [stack 0]
 Dot {
  name Dot3
  xpos 811
  ypos -755
 }
-set N17bb05d0 [stack 0]
+set N18a8ec00 [stack 0]
 Dot {
  name Dot4
  xpos 1055
  ypos -755
 }
-set N18a2bdc0 [stack 0]
+set N18aa15e0 [stack 0]
 Dot {
  name Dot5
  xpos 1243
  ypos -755
 }
-set N17baa330 [stack 0]
+set N18a77400 [stack 0]
 Crop {
  box {{curve x1 0 x5 268 x11 564 808 x21 904 x27 1024 x44 740} {curve x1 0 x5 112 x11 188 400 x21 544 x27 610 x44 370} {curve x1 1026 x5 1294 x11 1590 1834 x21 1930 x27 2050 x44 1982} {curve x1 622 x5 734 x11 810 1022 x21 1166 x27 1232 x44 1164}}
  name Crop1
@@ -164,7 +130,7 @@ Crop {
  ypos -737
 }
 SyLens {
- k -0.03
+ k -0.14
  uncrop 0.063
  filter Keys
  name SyLens9
@@ -180,13 +146,37 @@ SyLens {
  xpos 1260
  ypos -685
 }
-set N18ac6090 [stack 0]
+set N17bb0f90 [stack 0]
 Grade {
  name Grade1
  xpos 1337
  ypos -625
 }
-push $N18a8efd0
+Read {
+ inputs 0
+ file SampleImg/Source.jpg
+ format "2048 1234 0 0 2048 1234 1 "
+ name Read1
+ xpos -179
+ ypos -854
+}
+set N17ba4080 [stack 0]
+Crop {
+ box {0 0 2048 1234}
+ name Crop3
+ xpos -172
+ ypos -736
+}
+SyLens {
+ k {{curve x21 -0.01826 -0.01826 x114 -0.01826}}
+ uncrop {{curve x102 0.038}}
+ debug true
+ name SyLens_UN
+ tile_color 0xc10000ff
+ xpos -172
+ ypos -619
+}
+set N18ac6860 [stack 0]
 SyLens {
  mode redistort
  k {{curve x1 -0.01826 x114 -0.01826}}
@@ -197,70 +187,21 @@ SyLens {
  xpos -172
  ypos -593
 }
-push $N17ba6b20
+push $N17ba4080
 Dot {
  name Dot1
  xpos -11
  ypos -700
 }
-set N18ad09c0 [stack 0]
+set N18accc10 [stack 0]
 Difference {
  inputs 2
  name Difference2
  xpos -45
  ypos -520
 }
-push $N17badd40
-SyLens {
- k 0.1
- uncrop 0
- name SyLens1
- xpos 318
- ypos -710
-}
-SyLens {
- mode redistort
- k 0.1
- uncrop 0
- filter Keys
- name SyLens2
- xpos 318
- ypos -684
-}
-push $N17baac00
-Difference {
- inputs 2
- name Difference3
- xpos 318
- ypos -598
-}
-push $N17baac00
-push $N17baac00
-SyLens {
- k -0.03
- uncrop 0.063
- filter Keys
- name SyLens3
- xpos 512
- ypos -711
-}
-SyLens {
- mode redistort
- k -0.03
- uncrop 0.063
- filter Simon
- name SyLens4
- xpos 512
- ypos -672
-}
-Difference {
- inputs 2
- name Difference4
- xpos 461
- ypos -598
-}
-push $N17bb05d0
-push $N17bb05d0
+push $N18a8ec00
+push $N18a8ec00
 SyLens {
  k -0.03
  kcube 0.002
@@ -286,8 +227,8 @@ Difference {
  xpos 777
  ypos -596
 }
-push $N18a2bdc0
-push $N18a2bdc0
+push $N18aa15e0
+push $N18aa15e0
 SyLens {
  k -0.04
  kcube 0.002
@@ -313,32 +254,23 @@ Difference {
  xpos 1021
  ypos -597
 }
-push $N17baa330
-push $N18ac6090
+push $N18a77400
+push $N17bb0f90
 Difference {
  inputs 2
  name Difference7
  xpos 1209
  ypos -599
 }
-push $N18ad09c0
-SyLens {
- k {{curve x114 -0.01826}}
- uncrop -0.038
- name SyLens_Un_NEG
- tile_color 0xc10000ff
- xpos 99
- ypos -713
-}
 CheckerBoard2 {
  inputs 0
- format "2048 1234 0 0 2048 1234 1 "
+ format "4096 3112 0 0 4096 3112 1 4K_Super_35(full-ap)"
  boxsize {205 123}
  name CheckerBoard2
  xpos 1452
  ypos -873
 }
-set N18afa350 [stack 0]
+set N18ae3230 [stack 0]
 SyLens {
  k -0.02826
  uncrop 0.27
@@ -347,7 +279,31 @@ SyLens {
  xpos 1586
  ypos -788
 }
-push $N18afa350
+push $N18accc10
+SyLens {
+ k {{curve x114 -0.01826}}
+ uncrop -0.038
+ name SyLens_Un_NEG
+ tile_color 0xc10000ff
+ xpos 99
+ ypos -713
+}
+Read {
+ inputs 0
+ file SampleImg/Sample.jpg
+ format "2204 1328 0 0 2204 1328 1 "
+ name Read2
+ xpos -442
+ ypos -739
+}
+push $N18ac6860
+Difference {
+ inputs 2
+ name Difference1
+ xpos -442
+ ypos -625
+}
+push $N18ae3230
 Crop {
  box {0 0 2048 1234}
  name Crop2
@@ -359,14 +315,88 @@ SyLens {
  uncrop 0.27
  name SyLens11
  xpos 1452
- ypos -765
+ ypos -766
 }
-push $N18a8efd0
-push $N18a8efd0
+CheckerBoard2 {
+ inputs 0
+ format "3656 3112 0 0 3656 3112 2 4K_Cinemascope"
+ boxsize {205 123}
+ name CheckerBoard3
+ xpos 1675
+ ypos -884
+}
+SyLens {
+ k -0.012
+ uncrop 0.06
+ trim true
+ name SyLens13
+ xpos 1675
+ ypos -771
+}
+SyLens {
+ mode redistort
+ k -0.041
+ uncrop 0.13
+ trim true
+ name SyLens14
+ xpos 1675
+ ypos -745
+}
+push $N18a8f270
+SyLens {
+ k 0.1
+ uncrop 0
+ name SyLens1
+ xpos 318
+ ypos -710
+}
+SyLens {
+ mode redistort
+ k 0.1
+ uncrop 0
+ filter Keys
+ name SyLens2
+ xpos 318
+ ypos -684
+}
+push $N18a65b30
+Difference {
+ inputs 2
+ name Difference3
+ xpos 318
+ ypos -597
+}
+push $N18ac6860
+push $N18a65b30
+push $N18a65b30
+SyLens {
+ k -0.03
+ uncrop 0.063
+ filter Simon
+ name SyLens3
+ xpos 512
+ ypos -712
+}
+SyLens {
+ mode redistort
+ k -0.03
+ uncrop 0.063
+ filter Simon
+ name SyLens4
+ xpos 512
+ ypos -672
+}
+Difference {
+ inputs 2
+ name Difference4
+ xpos 461
+ ypos -600
+}
 Viewer {
  inputs 2
  input_process false
  name Viewer1
+ selected true
  xpos 664
  ypos -586
 }
