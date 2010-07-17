@@ -111,9 +111,10 @@ class SyLens : public Iop
 	// calls to _request and cannot reside on the stack, so... 
 	Format _outFormat;
 	
+	
 	// Lookup table based on the radius, and we add a value outside
 	// of the domain to help us interpolate
-	LutTuple* _values[STEPS];
+	std::vector<LutTuple*> _values;
 	
 public:
 	SyLens( Node *node ) : Iop ( node )
@@ -135,11 +136,7 @@ public:
 		_lastScanlineSize = 0;
 		_paddingW = 0;
 		_paddingH = 0;
-		
-		// Initialize the lookup table with null ptrs
-		for(int i = 0; i < STEPS + 1; i++) {
-			_values[i] = NULL;
-		}
+		std::vector<LutTuple*> _values(0);
 	}
 	
 	~SyLens () { }
@@ -223,7 +220,7 @@ public:
 		Vector2 tr(i.r(), i.t());
 		
 		// At this point we need a lookup table
-		buildTable();
+		buildTable(false, 0);
 		
 		// Here the distortion is INVERTED with relation to the pixel operation. With pixels, we need
 		// to obtain the coordinate to sample FROM. However, here we need a coordinate to sample TO
@@ -331,7 +328,7 @@ private:
 	void distortVectorIntoSource(Vector2& vec);
 	void undistortVectorIntoDest(Vector2& vec);
 	void Remove(Vector2& vec);
-	void buildTable();
+	void buildTable(bool, double uptoR = 10.0f);
 	
 	double lerp(double y1,double y2,double mu);
 	double curp(double y0, double y1, double y2, double y3, double mu);
@@ -382,20 +379,33 @@ void SyLens::vecFromUV(Vector2& absVec, Vector2& uvVec, int w, int h)
 // Build a table of distortion values from the 0 UV coordinate outwards to 1.
 // We dd another one to helpo us interpolate since a) nobody guaranteed floats never going out
 // of 1.0 b) we might use cubic or cosine interp later
-void SyLens::buildTable() 
-{
-	// Include SOME overshoot
+void SyLens::buildTable(bool toGiven, double uptoRadius) 
+{	
+	// Dealloc the old table
+	std::vector<LutTuple*>::iterator it;
+	it = _values.begin();
+	while(it != _values.end()) {
+		delete *it;
+		++it;
+	}
+	_values.clear();
+
+	// Set the default increment
 	double inc = 1.1f / STEPS;
-	double u, v, r2, f;
+	double r2 = 0;
+	int i = 0;
+	double u, f;
 	
-	// The first value is zero anyway
-	if(_values[0] != NULL) delete _values[0];
-	_values[0] = new LutTuple(0,1);
-	
-	for (int i = 1; i < STEPS; i++) {
-		// Dealloc the old struct 
-		if(_values[i] != NULL) delete _values[i];
+	while(1) {
+		if(toGiven && (r2 > uptoRadius)) {
+			if(kDbg) printf("SyLens: grown the table to %d entries\n", _values.size());
+			break;
+		} else if(i == STEPS) {
+			if(kDbg) printf("SyLens: preinitialized the table to %d entries\n", _values.size());
+			break;
+		}
 		
+		i++;
 		u = i * inc;
 		r2 = _aspect * _aspect * u * u + u * u;
 		
@@ -405,7 +415,7 @@ void SyLens::buildTable()
 		} else {
 			f = 1 + r2*(kCoeff);
 		}
-		_values[i] = new LutTuple(r2, f);
+		_values.push_back(new LutTuple(r2, f));
 	}
 }
 
@@ -431,40 +441,65 @@ double SyLens::interpolatedF(float r2)
 	
 	// find the nearest values in the table. We omit the first and the last
 	// increment since we might need them for overflows to interpolate.
-	for (i = 1; i < STEPS; i++) {
-		if(_values[i]->rResult > r2) {
+	for (i = 1; i < _values.size(); i++) {
+		if(_values[i]->r2 > r2) {
 			rLeft = _values[i-1]->r2;
 			fLeft = _values[i-1]->f;
 			fRight = _values[i]->f;
 			rRight = _values[i]->r2;
-			break;
+			// linearly interpolate between them (no not smart but does the jobb)
+			// mu is the fraction of the interval rLeft/rRight where r2 is
+			double mu = 1.0f / ((rRight - rLeft) / (r2 - rLeft));
+			return lerp(fLeft, fRight, mu);
 		}
 	}
-	
-	// linearly interpolate between them (no not smart but does the jobb)
-	// mu is the fraction of the interval rLeft/rRight where r2 is
-	double mu = 1.0f / ((rRight - rLeft) / (r2 - rLeft));
-	return lerp(fLeft, fRight, mu);
+	// We are out of bounds. Grow the table and trrrrry again.
+	if(kDbg) printf("Need to grow the table for undistort up to %3.3f\n r2", r2);
+	buildTable(true, r2);
+	return interpolatedF(r2);
 }
 
 // Get an reverse interpolated F (distortion multiplier) on the radius r2
 double SyLens::reverseInterpolatedF(float r2)
 {
 	float fLeft, fRight, rLeft, rRight;
+	double r, rp, f, rlim, rplim, raw, err, slope;
 	
 	// find the nearest values in the table. We also check our last extreme
 	// because the radius we've been give might be just slightly above 1
-	for (int i = 1; i < STEPS; i++) {
+	for (int i = 1; i < _values.size(); i++) {
 		if(_values[i]->rResult > r2) {
 			rLeft = _values[i-1]->rResult;
 			fLeft = _values[i-1]->f;
 			fRight = _values[i]->f;
 			rRight = _values[i]->rResult;
-			break;
+			double mu = 1.0f / ((rRight - rLeft) / (r2 - rLeft));
+			return lerp(fLeft, fRight, mu);
 		}
 	}
-	double mu = 1.0f / ((rRight - rLeft) / (r2 - rLeft));
-	return lerp(fLeft, fRight, mu);
+	
+	// We are out of bounds. Computor, compute!
+	if (kDbg) printf("SyLens: distortion table too short for redistort - computing live instead", r2);
+	
+	if (kCoeff < 0.0f) {
+		rlim = sqrt((-1.0/3.0) / kCoeff);
+		rplim = rlim * (1 + kCoeff*rlim*rlim);
+		if (rp >= 0.99 * rplim) {
+			f = rlim / rp;
+			return f;
+		}
+	}
+
+	r = rp;
+	for (int i = 0; i < 20; i++) {
+		raw = kCoeff * r * r;
+		slope = 1 + 3*raw;
+		err = rp - r * (1 + raw);
+		if (fabs(err) < 1.0e-10) break;
+		r += (err / slope);
+	}
+	f = r / rp;
+	return f;
 }
 
 // Do a linear intepolation. Picked from http://local.wasp.uwa.edu.au/~pbourke/miscellaneous/interpolation/
