@@ -48,7 +48,6 @@ static const char* const HELP =  "This plugin undistorts footage according "
 
 static const char* const mode_names[] = { "undistort", "redistort", 0 };
 
-
 class SyLens : public Iop
 {
 	//Nuke statics
@@ -228,6 +227,7 @@ void SyLens::knobs( Knob_Callback f) {
 	std::ostringstream ver;
 	ver << "SyLens v." << VERSION;
 	Text_knob(f, ver.str().c_str());
+	
 }
 
 // called whenever a knob is changed
@@ -274,18 +274,6 @@ void SyLens::_computeAspects() {
 // pay attention
 void SyLens::_validate(bool for_real)
 {
-	
-	// Set the autolabel
-	Knob* al = knob("label");
-	std::string label;
-	if (kMode == UNDIST) {
-		label = "undistort";
-	} else {
-		label = "redistort";
-	}
-	
-	al->set_text(label.c_str());
-	
 	// Bookkeeping boilerplate
 	filter.initialize();
 	input0().validate(for_real);
